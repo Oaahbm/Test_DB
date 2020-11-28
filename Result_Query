@@ -1,0 +1,63 @@
+INSERT INTO t_result SELECT c_number AS [Номер контракта],
+                            org_row_id AS [ID холдинга],
+                            org_number AS [Номер холдинга],
+                            org_name AS [Название холдинга],
+                            u_name AS [ФИО менеджера],
+                            u_job AS [Должность сотрудника]
+                       FROM (
+                                SELECT *
+                                  FROM (
+                                           SELECT master_ou_id AS c_master,
+                                                  ou_num AS c_number,
+                                                  MAX(strftime('%Y-%m-%d', (substr(last_upd_orig, 7, 4) || '-' || substr(last_upd_orig, 4, 2) || '-' || substr(last_upd_orig, 1, 2) ) ) )-- Здесь и далее - изменение формата даты для корректного поиска максимальной 
+                                             FROM t_contr
+                                            WHERE cust_stat_cd = 'Открыт'
+                                            GROUP BY row_id
+                                       )
+                                       INNER JOIN
+                                       (
+                                           SELECT org1.row_id AS org_row_id,
+                                                  org1.x_mts_full_accnt_name AS org_name,
+                                                  org1.x_holding_number AS org_number,
+                                                  org3.row_id AS org_contr_id,
+                                                  org1.x_mts_national_manager_id AS org_manager_id
+                                             FROM (
+                                                      SELECT *,
+                                                             MAX(strftime('%Y-%m-%d', (substr(last_upd_orig, 7, 4) || '-' || substr(last_upd_orig, 4, 2) || '-' || substr(last_upd_orig, 1, 2) ) ) ) 
+                                                        FROM t_org
+                                                       WHERE ou_type_cd = 'Национальный Холдинг'
+                                                       GROUP BY row_id
+                                                  )
+                                                  org1,
+                                                  (
+                                                      SELECT *,
+                                                             MAX(strftime('%Y-%m-%d', (substr(last_upd_orig, 7, 4) || '-' || substr(last_upd_orig, 4, 2) || '-' || substr(last_upd_orig, 1, 2) ) ) ) 
+                                                        FROM t_org
+                                                       WHERE ou_type_cd = 'Национальный Контракт'
+                                                       GROUP BY row_id
+                                                  )
+                                                  org2,
+                                                  (
+                                                      SELECT *,
+                                                             MAX(strftime('%Y-%m-%d', (substr(last_upd_orig, 7, 4) || '-' || substr(last_upd_orig, 4, 2) || '-' || substr(last_upd_orig, 1, 2) ) ) ) 
+                                                        FROM t_org
+                                                       WHERE ou_type_cd = 'Юридическое лицо'
+                                                       GROUP BY row_id
+                                                  )
+                                                  org3
+                                            WHERE org1.row_id = org2.par_ou_id AND 
+                                                  org2.row_id = org3.par_ou_id-- Связь юрлицо -> национальный контракт -> национальный холдинг для привязки к контракту
+                                       )
+                                       ON c_master = org_contr_id-- СВязь t_contr и t_org
+                            )
+                            INNER JOIN
+                            (
+                                SELECT row_id AS u_row_id,
+                                       MAX(fst_name || ' ' || mid_name || ' ' || last_name) AS u_name,
+                                       job_title AS u_job,
+                                       MAX(strftime('%Y-%m-%d', (substr(last_upd_orig, 7, 4) || '-' || substr(last_upd_orig, 4, 2) || '-' || substr(last_upd_orig, 1, 2) ) ) ) 
+                                  FROM t_users
+                                 GROUP BY row_id
+                            )
+                            ON org_manager_id = u_row_id-- Свзяь t_contr и t_users
+                      ORDER BY c_number;
